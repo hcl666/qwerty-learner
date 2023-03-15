@@ -19,7 +19,7 @@ const initialStatInfo = {
   countTypo: 0,
 }
 
-const Word: React.FC<WordProps> = ({ word = 'defaultWord', onFinish, isStart, wordVisible = true }) => {
+const Word: React.FC<WordProps> = ({ word = 'defaultWord', onFinish, isStart, wordVisible = true, setSkipState }) => {
   const originWord = word
 
   word = word.replace(new RegExp(' ', 'g'), EXPLICIT_SPACE)
@@ -32,34 +32,32 @@ const Word: React.FC<WordProps> = ({ word = 'defaultWord', onFinish, isStart, wo
   const [everWrong, setEverWrong] = useState(false)
   const [playKeySound, playBeepSound, playHintSound] = useSounds()
   const { pronunciation } = useAppState()
+  const [wrongRepeat, setWrongRepeat] = useState(0)
 
   const wordStat = useRef<WordStat>(initialStatInfo)
 
-  const onKeydown = useCallback(
-    (e) => {
-      const char = e.key
-      if (char === ' ') {
-        // 防止用户惯性按空格导致页面跳动
-        e.preventDefault()
-        setInputWord((value) => (value += EXPLICIT_SPACE))
-        playKeySound()
-      }
-      if (isChineseSymbol(char)) {
-        alert('您正在使用中文输入法输入，请关闭输入法')
-      }
-      if (isLegal(char) && !e.altKey && !e.ctrlKey && !e.metaKey) {
-        setInputWord((value) => (value += char))
-        playKeySound()
+  const onKeydown = useCallback((e) => {
+    const char = e.key
+    if (char === ' ') {
+      // 防止用户惯性按空格导致页面跳动
+      e.preventDefault()
+      setInputWord((value) => (value += EXPLICIT_SPACE))
+    }
+    if (isChineseSymbol(char)) {
+      alert('您正在使用中文输入法输入，请关闭输入法')
+    }
+    if (isLegal(char) && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      setInputWord((value) => (value += char))
 
-        wordStat.current.countInput += 1
-      } else if (char === 'Backspace') setInputWord((value) => value.substr(0, value.length - 1))
-    },
-    [playKeySound],
-  )
+      wordStat.current.countInput += 1
+    } else if (char === 'Backspace') setInputWord((value) => value.substr(0, value.length - 1))
+  }, [])
 
   // useEffect when word change
   useEffect(() => {
     setEverWrong(false)
+    // reset wrongRepeat to 0 when word change
+    setWrongRepeat(0)
     wordStat.current = { ...initialStatInfo }
     wordStat.current.timeStart = dayjs.utc().format('YYYY-MM-DD HH:mm:ss')
   }, [word])
@@ -93,6 +91,7 @@ const Word: React.FC<WordProps> = ({ word = 'defaultWord', onFinish, isStart, wo
     if (hasWrong) {
       playBeepSound()
       wordStat.current.countTypo += 1
+      setWrongRepeat((value) => value + 1) // wrongRepeat + 1 when has wrong
       const timer = setTimeout(() => {
         setInputWord('')
         setHasWrong(false)
@@ -104,6 +103,13 @@ const Word: React.FC<WordProps> = ({ word = 'defaultWord', onFinish, isStart, wo
     }
   }, [hasWrong, playBeepSound])
 
+  // if wrongRepeat reaches 4, set skipState to true
+  useEffect(() => {
+    if (wrongRepeat >= 4) {
+      setSkipState(true)
+    }
+  }, [wrongRepeat, setSkipState])
+
   // update words state
   useLayoutEffect(() => {
     let hasWrong = false,
@@ -114,6 +120,9 @@ const Word: React.FC<WordProps> = ({ word = 'defaultWord', onFinish, isStart, wo
     for (let i = 0; i < wordLength && i < inputWordLength; i++) {
       if (word[i] === inputWord[i]) {
         statesList.push('correct')
+        if (i === inputWordLength - 1) {
+          playKeySound()
+        }
       } else {
         hasWrong = true
         statesList.push('wrong')
@@ -157,5 +166,6 @@ export type WordProps = {
   onFinish: Function
   isStart: boolean
   wordVisible: boolean
+  setSkipState: Function
 }
 export default Word
